@@ -39,7 +39,7 @@ A Home Assistant Lovelace card for displaying ClearSpace tasks.
 
 ```yaml
 type: custom:clearspace-card
-entity: calendar.clearspace
+entity: sensor.clearspace_tasks
 title: ClearSpace Tasks
 refresh_interval_seconds: 60
 show_completed: true

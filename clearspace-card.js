@@ -13,7 +13,7 @@ class ClearSpaceCard extends HTMLElement {
 
   setConfig(config) {
     this._config = {
-      entity: 'calendar.clearspace',
+      entity: 'sensor.clearspace_tasks',
       title: 'ClearSpace Tasks',
       show_completed: true,
       max_items: 50,
@@ -23,7 +23,7 @@ class ClearSpaceCard extends HTMLElement {
     };
 
     if (!this._config.entity) {
-      this._config.entity = 'calendar.clearspace';
+      this._config.entity = 'sensor.clearspace_tasks';
     }
   }
 
@@ -38,7 +38,7 @@ class ClearSpaceCard extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
     this._ensureRefreshTimer();
-    this._refreshTasks();
+    this._syncFromEntity();
     this.render();
   }
 
@@ -47,7 +47,8 @@ class ClearSpaceCard extends HTMLElement {
     const intervalMs = Math.max(15, intervalSeconds) * 1000;
     if (this._refreshTimer) return;
     this._refreshTimer = window.setInterval(() => {
-      this._refreshTasks();
+      this._syncFromEntity();
+      this.render();
     }, intervalMs);
   }
 
@@ -58,39 +59,20 @@ class ClearSpaceCard extends HTMLElement {
     }
   }
 
-  async _refreshTasks() {
-    if (!this._hass || this._refreshInFlight) return;
-
-    const entityId = this._config.entity || 'calendar.clearspace';
+  _syncFromEntity() {
+    if (!this._hass) return;
+    const entityId = this._config.entity || 'sensor.clearspace_tasks';
     const state = this._hass.states[entityId];
-    const stateTasks = this._extractTasksFromState(state);
-
-    // Prefer live tasks from the entity if they exist.
-    if (stateTasks.length > 0) {
-      this._tasks = stateTasks;
-      this._lastUpdated = new Date();
-      this._error = null;
-      this.render();
+    if (!state) {
+      this._tasks = [];
+      this._error = `Entity not found: ${entityId}`;
       return;
     }
 
-    this._refreshInFlight = true;
-    this._loading = true;
-    this.render();
-
-    try {
-      const fetchedTasks = await this._fetchTasksFromCalendar(entityId);
-      this._tasks = fetchedTasks;
-      this._lastUpdated = new Date();
-      this._error = null;
-    } catch (err) {
-      this._error = err instanceof Error ? err.message : String(err);
-      // Keep whatever we had before if fetch fails.
-    } finally {
-      this._loading = false;
-      this._refreshInFlight = false;
-      this.render();
-    }
+    const stateTasks = this._extractTasksFromState(state);
+    this._tasks = stateTasks;
+    this._error = null;
+    this._lastUpdated = new Date();
   }
 
   _extractTasksFromState(state) {
@@ -98,83 +80,6 @@ class ClearSpaceCard extends HTMLElement {
     const tasks = state.attributes.tasks || state.attributes.task_list || [];
     if (!Array.isArray(tasks)) return [];
     return tasks.map((task, index) => this._normalizeTask(task, index, 'state'));
-  }
-
-  async _fetchTasksFromCalendar(entityId) {
-    const token = this._hass?.auth?.data?.accessToken;
-    if (!token) {
-      throw new Error('Home Assistant auth token not available');
-    }
-
-    const now = new Date();
-    const start = now.toISOString();
-    const end = new Date(now.getTime() + 1000 * 60 * 60 * 24 * 30).toISOString();
-
-    const payloads = [
-      {
-        entity_id: entityId,
-        start_date_time: start,
-        end_date_time: end,
-      },
-      {
-        target: { entity_id: [entityId] },
-        start_date_time: start,
-        end_date_time: end,
-      },
-      {
-        target: { entity_id: [entityId] },
-        duration: { days: 30 },
-      },
-    ];
-
-    for (const payload of payloads) {
-      const response = await fetch('/api/services/calendar/get_events', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        continue;
-      }
-
-      const data = await response.json();
-      const tasks = this._normalizeCalendarResponse(data, entityId);
-      if (tasks.length > 0) return tasks;
-    }
-
-    return [];
-  }
-
-  _normalizeCalendarResponse(data, entityId) {
-    const candidateLists = [];
-
-    if (Array.isArray(data)) candidateLists.push(data);
-    if (data && Array.isArray(data.events)) candidateLists.push(data.events);
-    if (data && Array.isArray(data.tasks)) candidateLists.push(data.tasks);
-    if (data && data.response) {
-      const response = data.response;
-      if (Array.isArray(response)) candidateLists.push(response);
-      if (response && Array.isArray(response.events)) candidateLists.push(response.events);
-      if (response && response[entityId] && Array.isArray(response[entityId].events)) {
-        candidateLists.push(response[entityId].events);
-      }
-      if (response && response[entityId] && Array.isArray(response[entityId].tasks)) {
-        candidateLists.push(response[entityId].tasks);
-      }
-    }
-    if (data && data[entityId]) {
-      const scoped = data[entityId];
-      if (Array.isArray(scoped)) candidateLists.push(scoped);
-      if (scoped && Array.isArray(scoped.events)) candidateLists.push(scoped.events);
-      if (scoped && Array.isArray(scoped.tasks)) candidateLists.push(scoped.tasks);
-    }
-
-    const flattened = candidateLists.find((list) => Array.isArray(list) && list.length > 0) || [];
-    return flattened.map((task, index) => this._normalizeTask(task, index, 'calendar'));
   }
 
   _normalizeTask(task, index, source) {
