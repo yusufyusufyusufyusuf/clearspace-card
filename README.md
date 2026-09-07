@@ -18,7 +18,7 @@ A set of Home Assistant Lovelace cards for ClearSpace.
    ```
    https://github.com/yusufyusufyusufyusuf/clearspace-card
    ```
-3. Download the ClearSpace card resource (`clearspace-card.v1.3.3.js`)
+3. Download the ClearSpace card resource (`clearspace-card.v1.3.4.js`)
 4. Add the JavaScript resource to Lovelace
 5. Refresh your browser
 
