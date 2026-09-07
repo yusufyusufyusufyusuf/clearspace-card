@@ -1,376 +1,471 @@
-class ClearSpaceCard extends HTMLElement {
-  constructor() {
-    super();
-    this._config = { entity: 'calendar.clearspace' };
-    this._hass = null;
-    this._tasks = [];
-    this._lastUpdated = null;
-    this._loading = false;
-    this._error = null;
-    this._refreshTimer = null;
-    this._refreshInFlight = false;
-  }
+const CLEARSPACE_VERSION = '1.3.1';
+const CLEARSPACE_DOCS_URL = 'https://github.com/yusufyusufyusufyusuf/clearspace-card';
 
-  setConfig(config) {
-    this._config = {
-      entity: 'sensor.clearspace_tasks',
-      title: 'ClearSpace Tasks',
-      show_completed: true,
-      max_items: 50,
-      refresh_interval_seconds: 60,
-      show_add_button: true,
-      ...config,
-    };
+const CARD_VARIANTS = {
+  list: {
+    tag: 'clearspace-card',
+    name: 'ClearSpace Tasks',
+    description: 'Detailed ClearSpace task list',
+  },
+  compact: {
+    tag: 'clearspace-compact-card',
+    name: 'ClearSpace Compact',
+    description: 'Small summary card with counts and top tasks',
+  },
+  board: {
+    tag: 'clearspace-board-card',
+    name: 'ClearSpace Board',
+    description: 'Grouped task board with status columns',
+  },
+  stats: {
+    tag: 'clearspace-stats-card',
+    name: 'ClearSpace Stats',
+    description: 'Stats-focused card with quick action buttons',
+  },
+};
 
-    if (!this._config.entity) {
-      this._config.entity = 'sensor.clearspace_tasks';
-    }
-  }
+const DEFAULT_ENTITIES = [
+  'sensor.clearspace_tasks',
+  'sensor.clearspace_open',
+  'sensor.clearspace_due_today',
+  'sensor.clearspace_overdue',
+  'calendar.clearspace',
+];
 
-  connectedCallback() {
-    this._ensureRefreshTimer();
-  }
+function escapeHtml(value) {
+  const div = document.createElement('div');
+  div.textContent = value == null ? '' : String(value);
+  return div.innerHTML;
+}
 
-  disconnectedCallback() {
-    this._clearRefreshTimer();
-  }
+function formatDate(dateValue) {
+  if (!dateValue) return '';
+  const asString = String(dateValue);
+  const dateOnly = asString.slice(0, 10);
+  const parsed = new Date(`${dateOnly}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return asString;
 
-  set hass(hass) {
-    this._hass = hass;
-    this._ensureRefreshTimer();
-    this._syncFromEntity();
-    this.render();
-  }
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diff = Math.floor((parsed - today) / 86400000);
+  if (diff === 0) return 'Today';
+  if (diff === 1) return 'Tomorrow';
+  if (diff === -1) return 'Yesterday';
+  if (diff < -1) return `${Math.abs(diff)} days overdue`;
+  return parsed.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
 
-  _ensureRefreshTimer() {
-    const intervalSeconds = Number(this._config?.refresh_interval_seconds || 60);
-    const intervalMs = Math.max(15, intervalSeconds) * 1000;
-    if (this._refreshTimer) return;
-    this._refreshTimer = window.setInterval(() => {
-      this._syncFromEntity();
-      this.render();
-    }, intervalMs);
-  }
-
-  _clearRefreshTimer() {
-    if (this._refreshTimer) {
-      window.clearInterval(this._refreshTimer);
-      this._refreshTimer = null;
-    }
-  }
-
-  _syncFromEntity() {
-    if (!this._hass) return;
-    const entityId = this._config.entity || 'sensor.clearspace_tasks';
-    const state = this._hass.states[entityId];
-    if (!state) {
-      this._tasks = [];
-      this._error = `Entity not found: ${entityId}`;
-      return;
-    }
-
-    const stateTasks = this._extractTasksFromState(state);
-    this._tasks = stateTasks;
-    this._error = null;
-    this._lastUpdated = new Date();
-  }
-
-  _extractTasksFromState(state) {
-    if (!state || !state.attributes) return [];
-    const tasks = state.attributes.tasks || state.attributes.task_list || [];
-    if (!Array.isArray(tasks)) return [];
-    return tasks.map((task, index) => this._normalizeTask(task, index, 'state'));
-  }
-
-  _normalizeTask(task, index, source) {
-    if (typeof task === 'string') {
-      return {
-        id: `${source}-${index}-${task}`,
-        name: task,
-        due: null,
-        status: 'open',
-        priority: 'medium',
-        source,
-      };
-    }
-
-    const title = task?.summary || task?.title || task?.name || task?.subject || 'Untitled task';
-    const due = task?.due || task?.due_date || task?.start || task?.start_date || task?.datetime || task?.date || null;
-    const status = task?.status || (task?.completed ? 'done' : 'open');
-    const priority = task?.priority || task?.importance || 'medium';
-
+function normalizeTask(task, index, source) {
+  if (typeof task === 'string') {
     return {
-      id: task?.id || task?.uid || `${source}-${index}-${title}`,
-      name: title,
-      due,
-      status,
-      priority,
-      description: task?.description || '',
-      location: task?.location || '',
+      id: `${source}-${index}-${task}`,
+      name: task,
+      due: null,
+      status: 'open',
+      priority: 'medium',
       source,
     };
   }
 
-  render() {
-    if (!this._config) return;
+  const title = task?.summary || task?.title || task?.name || task?.subject || 'Untitled task';
+  return {
+    id: task?.id || task?.uid || `${source}-${index}-${title}`,
+    name: title,
+    due: task?.due || task?.due_date || task?.start || task?.start_date || task?.datetime || task?.date || null,
+    status: task?.status || (task?.completed ? 'done' : 'open'),
+    priority: task?.priority || task?.importance || 'medium',
+    description: task?.description || '',
+    location: task?.location || '',
+    source,
+  };
+}
 
-    const title = this._config.title || 'ClearSpace Tasks';
-    const showCompleted = this._config.show_completed !== false;
-    const maxItems = Number(this._config.max_items || 50);
-    const allTasks = Array.isArray(this._tasks) ? this._tasks : [];
+function extractTasksFromState(state) {
+  if (!state?.attributes) return [];
+  const raw = state.attributes.tasks || state.attributes.task_list || state.attributes.items || [];
+  if (!Array.isArray(raw)) return [];
+  return raw.map((task, index) => normalizeTask(task, index, state.entity_id));
+}
 
-    let displayTasks = showCompleted ? allTasks : allTasks.filter((task) => task.status !== 'done');
-    displayTasks = displayTasks.slice(0, maxItems);
+function scoreState(state) {
+  if (!state) return -1;
+  if (extractTasksFromState(state).length > 0) return 100;
+  if (state.entity_id === 'sensor.clearspace_tasks') return 80;
+  if (state.attributes?.tasks) return 70;
+  if (state.entity_id === 'sensor.clearspace_open') return 60;
+  if (state.entity_id === 'calendar.clearspace') return 50;
+  return 0;
+}
 
-    const openCount = allTasks.filter((task) => task.status !== 'done').length;
-    const taskItems = displayTasks.map((task) => {
-      const isDone = task.status === 'done';
-      const dueClass = this._getDueClass(task);
-      const dueLabel = task.due ? this._formatDate(task.due) : '';
-      const checkbox = isDone
-        ? `<ha-icon icon="mdi:check-circle" style="color: var(--success-color);"></ha-icon>`
-        : `<ha-icon icon="mdi:checkbox-blank-circle-outline" style="color: var(--primary-color);"></ha-icon>`;
+function resolveTasks(hass, entityHint) {
+  if (!hass?.states) return { entityId: entityHint || 'sensor.clearspace_tasks', state: null, tasks: [] };
 
+  const candidateIds = [
+    entityHint,
+    ...DEFAULT_ENTITIES,
+    ...Object.keys(hass.states).filter((entityId) => entityId.includes('clearspace')),
+  ].filter(Boolean);
+
+  let best = null;
+  for (const entityId of candidateIds) {
+    const state = hass.states[entityId];
+    const score = scoreState(state);
+    if (score > scoreState(best?.state)) {
+      best = { entityId, state, tasks: extractTasksFromState(state) };
+    }
+  }
+
+  if (!best) {
+    return { entityId: entityHint || 'sensor.clearspace_tasks', state: null, tasks: [] };
+  }
+
+  return best;
+}
+
+function sortTasks(tasks) {
+  return [...tasks].sort((a, b) => {
+    const aDone = a.status === 'done' ? 1 : 0;
+    const bDone = b.status === 'done' ? 1 : 0;
+    if (aDone !== bDone) return aDone - bDone;
+    const aDue = a.due ? String(a.due) : '9999-12-31';
+    const bDue = b.due ? String(b.due) : '9999-12-31';
+    if (aDue !== bDue) return aDue.localeCompare(bDue);
+    return String(a.name).localeCompare(String(b.name));
+  });
+}
+
+function groupTasks(tasks) {
+  const today = new Date().toISOString().slice(0, 10);
+  const buckets = { overdue: [], today: [], upcoming: [], done: [] };
+  for (const task of tasks) {
+    if (task.status === 'done') {
+      buckets.done.push(task);
+      continue;
+    }
+    const due = task.due ? String(task.due).slice(0, 10) : '';
+    if (due && due < today) buckets.overdue.push(task);
+    else if (due === today) buckets.today.push(task);
+    else buckets.upcoming.push(task);
+  }
+  return buckets;
+}
+
+function dueClass(task) {
+  if (task.status === 'done' || !task.due) return '';
+  const today = new Date().toISOString().slice(0, 10);
+  const due = String(task.due).slice(0, 10);
+  if (due < today) return 'due-overdue';
+  if (due === today) return 'due-soon';
+  return 'due-later';
+}
+
+function taskIcon(task) {
+  if (task.status === 'done') return 'mdi:check-circle';
+  if (task.priority === 'urgent' || task.priority === 'high') return 'mdi:alert-circle';
+  return 'mdi:checkbox-blank-circle-outline';
+}
+
+class ClearSpaceCardBase extends HTMLElement {
+  constructor(variant) {
+    super();
+    this._variant = variant;
+    this._config = null;
+    this._hass = null;
+    this._tasks = [];
+    this._entityId = 'sensor.clearspace_tasks';
+    this._error = null;
+    this._lastUpdated = null;
+    this._timer = null;
+  }
+
+  setConfig(config) {
+    this._config = {
+      entity: '',
+      title: CARD_VARIANTS[this._variant].name,
+      refresh_interval_seconds: 60,
+      max_items: 50,
+      show_completed: true,
+      show_add_button: true,
+      auto_refresh: true,
+      refresh_service: 'refresh',
+      ...config,
+    };
+    if (this._config.entity) this._entityId = this._config.entity;
+  }
+
+  connectedCallback() {
+    this._ensureTimer();
+  }
+
+  disconnectedCallback() {
+    if (this._timer) {
+      window.clearInterval(this._timer);
+      this._timer = null;
+    }
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    this._syncFromHass();
+    this.render();
+    this._ensureTimer();
+  }
+
+  _ensureTimer() {
+    if (this._timer || !this._config) return;
+    const intervalMs = Math.max(15, Number(this._config.refresh_interval_seconds || 60)) * 1000;
+    this._timer = window.setInterval(() => this._refreshAndSync(), intervalMs);
+  }
+
+  async _refreshAndSync() {
+    if (!this._hass) return;
+    if (this._config?.auto_refresh !== false && this._hass.callService) {
+      try {
+        await this._hass.callService('clearspace', this._config.refresh_service || 'refresh', {});
+      } catch (err) {
+        // Ignore and fall back to current HA state.
+      }
+    }
+    this._syncFromHass();
+    this.render();
+  }
+
+  _syncFromHass() {
+    const resolved = resolveTasks(this._hass, this._entityId);
+    this._entityId = resolved.entityId;
+    this._tasks = resolved.tasks;
+    this._error = resolved.state ? null : `Entity not found: ${this._entityId}`;
+    if (resolved.state) this._lastUpdated = new Date();
+  }
+
+  _taskStatusSummary(tasks) {
+    const open = tasks.filter((task) => task.status !== 'done').length;
+    const overdue = tasks.filter((task) => task.status !== 'done' && task.due && String(task.due).slice(0, 10) < new Date().toISOString().slice(0, 10)).length;
+    const today = tasks.filter((task) => task.status !== 'done' && task.due && String(task.due).slice(0, 10) === new Date().toISOString().slice(0, 10)).length;
+    const done = tasks.filter((task) => task.status === 'done').length;
+    return { open, overdue, today, done };
+  }
+
+  _onTaskClick(task) {
+    if (!task?.id || !this._hass?.callService) return;
+    this._hass.callService('clearspace', 'complete_task', { task_id: task.id }).catch(() => {});
+    window.setTimeout(() => this._refreshAndSync(), 800);
+  }
+
+  _renderTaskRow(task, compact = false) {
+    const isDone = task.status === 'done';
+    const meta = [];
+    if (task.due) meta.push(`<span class="task-due ${dueClass(task)}">${escapeHtml(formatDate(task.due))}</span>`);
+    if (task.priority && task.priority !== 'medium') meta.push(`<span class="task-badge priority-${escapeHtml(task.priority)}">${escapeHtml(task.priority)}</span>`);
+    if (task.location) meta.push(`<span class="task-badge">${escapeHtml(task.location)}</span>`);
+
+    return `
+      <button class="task-row ${compact ? 'task-row-compact' : ''} ${isDone ? 'task-done' : ''}" data-task-id="${escapeHtml(task.id)}" type="button">
+        <ha-icon class="task-icon" icon="${taskIcon(task)}"></ha-icon>
+        <div class="task-body">
+          <div class="task-name">${escapeHtml(task.name)}</div>
+          ${meta.length ? `<div class="task-meta">${meta.join('')}</div>` : ''}
+        </div>
+        <ha-icon class="task-action" icon="mdi:chevron-right"></ha-icon>
+      </button>
+    `;
+  }
+
+  _styleBlock() {
+    return `
+      <style>
+        .clearspace-wrap { padding: 16px; }
+        .header { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding-bottom:12px; margin-bottom:12px; border-bottom:1px solid var(--divider-color); }
+        .titles { display:flex; flex-direction:column; gap:4px; min-width:0; }
+        .title { font-size:18px; font-weight:700; color:var(--primary-text-color); line-height:1.2; }
+        .subtitle { font-size:12px; color:var(--secondary-text-color); }
+        .chips { display:flex; gap:8px; flex-wrap:wrap; }
+        .chip { border-radius:999px; padding:4px 10px; font-size:12px; background:var(--secondary-background-color); color:var(--primary-text-color); }
+        .chip.warn { color:var(--warning-color); }
+        .chip.bad { color:var(--error-color); }
+        .chip.good { color:var(--success-color); }
+        .section { margin-top:12px; }
+        .section-title { font-size:13px; font-weight:700; color:var(--secondary-text-color); margin:0 0 8px; text-transform:uppercase; letter-spacing:.06em; }
+        .task-list { display:flex; flex-direction:column; gap:8px; }
+        .task-row { width:100%; display:flex; align-items:center; gap:12px; padding:12px; border-radius:14px; border:1px solid var(--divider-color); background:var(--card-background-color); color:inherit; cursor:pointer; text-align:left; }
+        .task-row:hover { background:var(--secondary-background-color); }
+        .task-row.task-row-compact { padding:10px 12px; }
+        .task-icon, .task-action { flex-shrink:0; color:var(--secondary-text-color); }
+        .task-done .task-icon { color:var(--success-color); }
+        .task-body { min-width:0; flex:1; }
+        .task-name { font-size:14px; color:var(--primary-text-color); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .task-done .task-name { text-decoration:line-through; opacity:.7; }
+        .task-meta { display:flex; gap:8px; flex-wrap:wrap; margin-top:3px; }
+        .task-due { font-size:12px; color:var(--secondary-text-color); }
+        .task-due.due-soon { color:var(--warning-color); }
+        .task-due.due-overdue { color:var(--error-color); font-weight:600; }
+        .task-due.due-later { color:var(--secondary-text-color); }
+        .task-badge { font-size:11px; border-radius:999px; padding:2px 8px; background:rgba(var(--rgb-primary-color), .12); color:var(--primary-text-color); }
+        .task-badge.priority-high, .task-badge.priority-urgent { background:rgba(var(--rgb-error-color), .12); color:var(--error-color); }
+        .grid { display:grid; gap:10px; }
+        .grid-2 { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+        .grid-4 { grid-template-columns:repeat(4, minmax(0, 1fr)); }
+        .metric { border-radius:16px; padding:14px; background:var(--secondary-background-color); border:1px solid var(--divider-color); }
+        .metric-label { font-size:12px; color:var(--secondary-text-color); text-transform:uppercase; letter-spacing:.06em; }
+        .metric-value { font-size:26px; font-weight:800; color:var(--primary-text-color); margin-top:4px; }
+        .metric-help { font-size:12px; color:var(--secondary-text-color); margin-top:2px; }
+        .board { display:grid; gap:10px; }
+        .board-col { border-radius:16px; border:1px solid var(--divider-color); background:var(--secondary-background-color); padding:12px; }
+        .board-col-title { margin:0 0 8px; font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--secondary-text-color); display:flex; justify-content:space-between; align-items:center; }
+        .board-col-count { font-weight:700; color:var(--primary-text-color); }
+        .empty, .error { padding:16px; text-align:center; color:var(--secondary-text-color); }
+        .error { color:var(--error-color); }
+        .actions { margin-top:12px; display:flex; gap:10px; flex-wrap:wrap; }
+        .action-btn { flex:1; min-width:140px; padding:10px 12px; border-radius:12px; border:1px solid rgba(var(--rgb-primary-color), .35); background:transparent; color:var(--primary-color); cursor:pointer; }
+        .action-btn:hover { background:rgba(var(--rgb-primary-color), .08); }
+        .action-btn.secondary { border-color:var(--divider-color); color:var(--secondary-text-color); }
+      </style>
+    `;
+  }
+
+  _bodyHtml() {
+    const tasks = sortTasks(this._tasks);
+    const summary = this._taskStatusSummary(tasks);
+    const limited = tasks.filter((task) => this._config.show_completed !== false || task.status !== 'done').slice(0, Number(this._config.max_items || 50));
+    const groups = groupTasks(limited);
+
+    if (this._variant === 'stats') {
       return `
-        <div class="task-item ${isDone ? 'task-done' : ''}" data-task-id="${this._escapeHtml(task.id)}">
-          <div class="task-checkbox">${checkbox}</div>
-          <div class="task-content">
-            <div class="task-name">${this._escapeHtml(task.name)}</div>
-            ${dueLabel ? `<div class="task-due ${dueClass}">${this._escapeHtml(dueLabel)}</div>` : ''}
-          </div>
-          ${task.priority === 'high' || task.priority === 'urgent' ? '<div class="task-priority">!</div>' : ''}
+        <div class="grid grid-2">
+          <div class="metric"><div class="metric-label">Open</div><div class="metric-value">${summary.open}</div><div class="metric-help">Active tasks</div></div>
+          <div class="metric"><div class="metric-label">Due today</div><div class="metric-value">${summary.today}</div><div class="metric-help">Needs attention</div></div>
+          <div class="metric"><div class="metric-label">Overdue</div><div class="metric-value">${summary.overdue}</div><div class="metric-help">Late items</div></div>
+          <div class="metric"><div class="metric-label">Done</div><div class="metric-value">${summary.done}</div><div class="metric-help">Completed</div></div>
         </div>
       `;
-    }).join('');
+    }
+
+    if (this._variant === 'compact') {
+      const topTasks = limited.slice(0, 3).map((task) => this._renderTaskRow(task, true)).join('');
+      return `
+        <div class="chips">
+          <span class="chip">${summary.open} open</span>
+          <span class="chip ${summary.today ? 'warn' : ''}">${summary.today} due today</span>
+          <span class="chip ${summary.overdue ? 'bad' : ''}">${summary.overdue} overdue</span>
+          <span class="chip ${summary.done ? 'good' : ''}">${summary.done} done</span>
+        </div>
+        <div class="section">
+          <div class="section-title">Top tasks</div>
+          <div class="task-list">${topTasks || '<div class="empty">No tasks yet</div>'}</div>
+        </div>
+      `;
+    }
+
+    if (this._variant === 'board') {
+      const boardCards = [
+        ['Overdue', groups.overdue],
+        ['Today', groups.today],
+        ['Upcoming', groups.upcoming],
+        ['Done', groups.done],
+      ].map(([label, list]) => `
+        <div class="board-col">
+          <div class="board-col-title">${label} <span class="board-col-count">${list.length}</span></div>
+          <div class="task-list">${list.slice(0, 8).map((task) => this._renderTaskRow(task, true)).join('') || '<div class="empty">None</div>'}</div>
+        </div>
+      `).join('');
+      return `<div class="board">${boardCards}</div>`;
+    }
+
+    const visibleTasks = limited;
+    return visibleTasks.length
+      ? `<div class="task-list">${visibleTasks.map((task) => this._renderTaskRow(task)).join('')}</div>`
+      : '<div class="empty">No tasks found</div>';
+  }
+
+  render() {
+    if (!this._config) return;
+    const summary = this._taskStatusSummary(this._tasks);
+    const title = this._config.title || CARD_VARIANTS[this._variant].name;
+    const subtitle = `Auto-refresh ${Math.max(15, Number(this._config.refresh_interval_seconds || 60))}s • source: ${this._entityId}${this._lastUpdated ? ` • updated ${this._lastUpdated.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : ''}`;
 
     this.innerHTML = `
       <ha-card>
-        <style>
-          .clearspace-card {
-            padding: 16px;
-          }
-          .card-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 12px;
-            padding-bottom: 12px;
-            border-bottom: 1px solid var(--divider-color);
-            margin-bottom: 12px;
-          }
-          .title-wrap {
-            min-width: 0;
-            display: flex;
-            flex-direction: column;
-            gap: 2px;
-          }
-          .card-title {
-            font-size: 18px;
-            font-weight: 600;
-            color: var(--primary-text-color);
-            line-height: 1.2;
-          }
-          .card-subtitle {
-            font-size: 12px;
-            color: var(--secondary-text-color);
-          }
-          .task-count {
-            font-size: 14px;
-            color: var(--secondary-text-color);
-            background: var(--secondary-background-color);
-            padding: 4px 10px;
-            border-radius: 999px;
-            white-space: nowrap;
-          }
-          .task-list {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-          }
-          .task-item {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 10px;
-            border-radius: 10px;
-            background: var(--card-background-color);
-            border: 1px solid var(--divider-color);
-            cursor: pointer;
-            transition: background 0.2s ease;
-          }
-          .task-item:hover {
-            background: var(--secondary-background-color);
-          }
-          .task-done {
-            opacity: 0.65;
-          }
-          .task-done .task-name {
-            text-decoration: line-through;
-          }
-          .task-checkbox {
-            flex-shrink: 0;
-          }
-          .task-content {
-            flex: 1;
-            min-width: 0;
-          }
-          .task-name {
-            font-size: 14px;
-            color: var(--primary-text-color);
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-          }
-          .task-due {
-            font-size: 12px;
-            margin-top: 2px;
-          }
-          .due-soon {
-            color: var(--warning-color);
-          }
-          .due-overdue {
-            color: var(--error-color);
-            font-weight: 500;
-          }
-          .due-later {
-            color: var(--secondary-text-color);
-          }
-          .task-priority {
-            color: var(--error-color);
-            font-weight: bold;
-            font-size: 16px;
-            flex-shrink: 0;
-          }
-          .empty-state {
-            text-align: center;
-            padding: 24px 12px;
-            color: var(--secondary-text-color);
-          }
-          .error-state {
-            text-align: center;
-            padding: 16px 12px;
-            color: var(--error-color);
-            font-size: 13px;
-          }
-          .add-task-btn {
-            margin-top: 12px;
-            width: 100%;
-            padding: 10px;
-            border: 1px dashed var(--primary-color);
-            border-radius: 10px;
-            background: transparent;
-            color: var(--primary-color);
-            cursor: pointer;
-            font-size: 14px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-          }
-          .add-task-btn:hover {
-            background: rgba(var(--rgb-primary-color), 0.1);
-          }
-        </style>
-        <div class="clearspace-card">
-          <div class="card-header">
-            <div class="title-wrap">
-              <div class="card-title">${this._escapeHtml(title)}</div>
-              <div class="card-subtitle">Auto-refreshes every ${Math.max(15, Number(this._config.refresh_interval_seconds || 60))} seconds</div>
+        ${this._styleBlock()}
+        <div class="clearspace-wrap">
+          <div class="header">
+            <div class="titles">
+              <div class="title">${escapeHtml(title)}</div>
+              <div class="subtitle">${escapeHtml(subtitle)}</div>
             </div>
-            <div class="task-count">${openCount} open</div>
+            <div class="chips">
+              <span class="chip">${summary.open} open</span>
+              <span class="chip ${summary.today ? 'warn' : ''}">${summary.today} today</span>
+              <span class="chip ${summary.overdue ? 'bad' : ''}">${summary.overdue} overdue</span>
+            </div>
           </div>
-
-          ${this._loading && displayTasks.length === 0 ? '<div class="empty-state">Loading ClearSpace tasks…</div>' : ''}
-          ${this._error ? `<div class="error-state">Could not load tasks: ${this._escapeHtml(this._error)}</div>` : ''}
-
-          ${displayTasks.length > 0
-            ? `<div class="task-list">${taskItems}</div>`
-            : (!this._loading ? '<div class="empty-state">No tasks found</div>' : '')
-          }
-
-          ${this._config.show_add_button !== false ? `
-            <button class="add-task-btn" onclick="window.open('https://clearspacetask.com', '_blank')">
-              <ha-icon icon="mdi:plus"></ha-icon>
-              Add Task
-            </button>
-          ` : ''}
+          ${this._error ? `<div class="error">Could not load tasks: ${escapeHtml(this._error)}</div>` : ''}
+          ${this._bodyHtml()}
+          <div class="actions">
+            ${this._config.show_add_button !== false ? `<button class="action-btn" type="button" data-action="add">Add task</button>` : ''}
+            <button class="action-btn secondary" type="button" data-action="refresh">Refresh now</button>
+          </div>
         </div>
       </ha-card>
     `;
 
-    this.querySelectorAll('.task-item').forEach((item) => {
-      item.addEventListener('click', () => {
-        const taskId = item.getAttribute('data-task-id');
-        if (taskId && this._hass?.callService) {
-          this._hass.callService('clearspace', 'complete_task', { task_id: taskId });
-        }
-      });
+    this.querySelectorAll('[data-task-id]').forEach((button) => {
+      button.addEventListener('click', () => this._onTaskClick({ id: button.getAttribute('data-task-id') }));
     });
-  }
-
-  _getDueClass(task) {
-    if (task.status === 'done') return '';
-    if (!task.due) return '';
-    const today = new Date().toISOString().split('T')[0];
-    const due = String(task.due).slice(0, 10);
-    if (due < today) return 'due-overdue';
-    if (due === today) return 'due-soon';
-    return 'due-later';
-  }
-
-  _formatDate(dateStr) {
-    const asString = String(dateStr);
-    const dateOnly = asString.slice(0, 10);
-    const parsed = new Date(dateOnly + 'T00:00:00');
-    if (Number.isNaN(parsed.getTime())) return asString;
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const diff = Math.floor((parsed - today) / (1000 * 60 * 60 * 24));
-
-    if (diff === 0) return 'Today';
-    if (diff === 1) return 'Tomorrow';
-    if (diff === -1) return 'Yesterday';
-    if (diff < -1) return `${Math.abs(diff)} days overdue`;
-    if (diff > 1) return parsed.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    return parsed.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  }
-
-  _escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text == null ? '' : String(text);
-    return div.innerHTML;
+    const addBtn = this.querySelector('[data-action="add"]');
+    if (addBtn) addBtn.addEventListener('click', () => window.open('https://clearspacetask.com', '_blank', 'noopener,noreferrer'));
+    const refreshBtn = this.querySelector('[data-action="refresh"]');
+    if (refreshBtn) refreshBtn.addEventListener('click', () => this._refreshAndSync());
   }
 
   getCardSize() {
-    return 4;
-  }
-
-  static getConfigElement() {
-    return document.createElement('clearspace-card-editor');
+    return this._variant === 'board' ? 8 : this._variant === 'stats' ? 3 : 4;
   }
 
   static getStubConfig() {
     return {
-      entity: 'calendar.clearspace',
+      entity: 'sensor.clearspace_tasks',
       title: 'ClearSpace Tasks',
-      show_completed: true,
-      max_items: 50,
       refresh_interval_seconds: 60,
+      max_items: 50,
+      show_completed: true,
       show_add_button: true,
+      auto_refresh: true,
     };
   }
 }
 
-customElements.define('clearspace-card', ClearSpaceCard);
+function registerCard(variant) {
+  const { tag, name, description } = CARD_VARIANTS[variant];
+  const klass = class extends ClearSpaceCardBase {
+    constructor() {
+      super(variant);
+    }
+    static getConfigElement() {
+      return null;
+    }
+    static getStubConfig() {
+      return {
+        entity: 'sensor.clearspace_tasks',
+        title: name,
+        refresh_interval_seconds: 60,
+        max_items: variant === 'compact' ? 3 : 50,
+        show_completed: true,
+        show_add_button: true,
+        auto_refresh: true,
+      };
+    }
+  };
 
-window.customCards = window.customCards || [];
-window.customCards.push({
-  type: 'clearspace-card',
-  name: 'ClearSpace Tasks',
-  description: 'A card to display and manage ClearSpace tasks',
-  preview: true,
-  documentationURL: 'https://github.com/yusufyusufyusufyusuf/clearspace-card',
-});
+  customElements.define(tag, klass);
+  window.customCards = window.customCards || [];
+  window.customCards.push({
+    type: tag,
+    name,
+    description,
+    preview: true,
+    documentationURL: CLEARSPACE_DOCS_URL,
+  });
+}
 
-console.info('%c CLEARSPACE CARD %c v1.1.0 ', 'background: #667eea; color: white; font-weight: 700;', 'background: #764ba2; color: white; font-weight: 700;');
+Object.keys(CARD_VARIANTS).forEach(registerCard);
+console.info(`%c CLEARSPACE CARDS %c v${CLEARSPACE_VERSION} `, 'background:#667eea;color:white;font-weight:700;', 'background:#764ba2;color:white;font-weight:700;');

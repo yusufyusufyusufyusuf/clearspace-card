@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ClearSpace Cards for Home Assistant</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: rgba(255,255,255,0.04);
+      --panel-2: rgba(255,255,255,0.07);
+      --line: rgba(255,255,255,0.10);
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #60a5fa;
+      --accent-2: #34d399;
+      --warn: #f59e0b;
+      --shadow: 0 20px 60px rgba(0,0,0,0.35);
+      color-scheme: dark;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      background: radial-gradient(circle at top, rgba(96,165,250,0.16), transparent 38%), var(--bg);
+      color: var(--text);
+      line-height: 1.55;
+    }
+    a { color: inherit; }
+    .wrap { max-width: 1180px; margin: 0 auto; padding: 28px 20px 72px; }
+    .hero {
+      display: grid; gap: 22px; grid-template-columns: 1.2fr 0.8fr; align-items: center;
+      padding: 32px; border: 1px solid var(--line); border-radius: 28px; background: linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.03)); box-shadow: var(--shadow);
+    }
+    .eyebrow { display: inline-flex; gap: 8px; align-items: center; padding: 6px 12px; border-radius: 999px; background: rgba(96,165,250,0.14); color: #bfdbfe; font-size: 13px; margin-bottom: 14px; }
+    h1 { font-size: clamp(34px, 6vw, 60px); line-height: 1.05; margin: 0 0 16px; }
+    p.lead { margin: 0 0 22px; max-width: 62ch; color: var(--muted); font-size: 17px; }
+    .buttons { display: flex; flex-wrap: wrap; gap: 12px; }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+      padding: 13px 18px; border-radius: 14px; border: 1px solid var(--line); text-decoration: none;
+      background: rgba(255,255,255,0.04); color: var(--text); font-weight: 600;
+    }
+    .btn.primary { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #06111f; border-color: transparent; }
+    .btn:hover { transform: translateY(-1px); }
+    .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    .stat, .card, .panel {
+      background: var(--panel); border: 1px solid var(--line); border-radius: 22px; box-shadow: var(--shadow);
+    }
+    .stat { padding: 18px; }
+    .stat strong { display: block; font-size: 28px; margin-bottom: 6px; }
+    .section { margin-top: 28px; }
+    .section h2 { margin: 0 0 12px; font-size: 28px; }
+    .section p.sub { color: var(--muted); margin: 0 0 20px; }
+    .grid { display: grid; gap: 16px; }
+    .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .card { padding: 20px; }
+    .card h3 { margin: 0 0 8px; font-size: 20px; }
+    .badge { display: inline-flex; margin-bottom: 12px; padding: 5px 10px; border-radius: 999px; background: rgba(96,165,250,0.12); color: #bfdbfe; font-size: 12px; }
+    .card ul { margin: 14px 0 0; padding-left: 18px; color: var(--muted); }
+    .panel { padding: 20px; }
+    pre {
+      overflow: auto; margin: 0; padding: 16px; border-radius: 18px; border: 1px solid var(--line); background: rgba(0,0,0,0.28); color: #dbeafe;
+    }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    .two-up { display: grid; gap: 16px; grid-template-columns: 1fr 1fr; }
+    .download-list { display: flex; flex-wrap: wrap; gap: 12px; }
+    .download-list a { text-decoration: none; }
+    .footer { margin-top: 30px; color: var(--muted); font-size: 14px; }
+    .note { padding: 12px 14px; border-left: 4px solid var(--warn); background: rgba(245,158,11,0.08); border-radius: 12px; color: #fde68a; }
+    @media (max-width: 900px) {
+      .hero, .cards, .two-up, .stats { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="hero">
+      <div>
+        <div class="eyebrow">ClearSpace • Home Assistant • Lovelace cards</div>
+        <h1>Choose the ClearSpace card that fits your dashboard.</h1>
+        <p class="lead">
+          One download gives you four different ClearSpace card styles for Home Assistant:
+          detailed list, compact summary, board view, and a stats card. They all use the same
+          ClearSpace task source and can auto-refresh every minute.
+        </p>
+        <div class="buttons">
+          <a class="btn primary" href="https://raw.githubusercontent.com/yusufyusufyusufyusuf/clearspace-card/main/clearspace-card.js" target="_blank" rel="noreferrer">Download JS resource</a>
+          <a class="btn" href="https://github.com/yusufyusufyusufyusuf/clearspace-card" target="_blank" rel="noreferrer">View GitHub repo</a>
+          <a class="btn" href="#install">Setup steps</a>
+        </div>
+      </div>
+      <div class="stats">
+        <div class="stat"><strong>4</strong><span>card styles</span></div>
+        <div class="stat"><strong>60s</strong><span>default refresh</span></div>
+        <div class="stat"><strong>1</strong><span>resource file</span></div>
+      </div>
+    </section>
+
+    <section class="section" id="cards">
+      <h2>Card options</h2>
+      <p class="sub">Load one resource, then choose the card type in the Home Assistant dashboard editor.</p>
+      <div class="grid cards">
+        <article class="card">
+          <div class="badge">Detailed</div>
+          <h3>ClearSpace Tasks</h3>
+          <p>Main task list card with due dates, status, add button, and task completion actions.</p>
+          <ul>
+            <li><code>custom:clearspace-card</code></li>
+            <li>Best for a full task list</li>
+            <li>Shows source and freshness</li>
+          </ul>
+        </article>
+        <article class="card">
+          <div class="badge">Compact</div>
+          <h3>ClearSpace Compact</h3>
+          <p>A smaller card for a tight dashboard. Shows counts and the top tasks.</p>
+          <ul>
+            <li><code>custom:clearspace-compact-card</code></li>
+            <li>Good for phone dashboards</li>
+            <li>Uses a slimmer layout</li>
+          </ul>
+        </article>
+        <article class="card">
+          <div class="badge">Board</div>
+          <h3>ClearSpace Board</h3>
+          <p>Grouped columns for overdue, today, upcoming, and done tasks.</p>
+          <ul>
+            <li><code>custom:clearspace-board-card</code></li>
+            <li>Best for at-a-glance planning</li>
+            <li>Looks more like a task board</li>
+          </ul>
+        </article>
+        <article class="card">
+          <div class="badge">Stats</div>
+          <h3>ClearSpace Stats</h3>
+          <p>Shows counts only: open, due today, overdue, and done.</p>
+          <ul>
+            <li><code>custom:clearspace-stats-card</code></li>
+            <li>Best for a clean summary row</li>
+            <li>Smallest and simplest option</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" id="install">
+      <h2>How to install in Home Assistant</h2>
+      <p class="sub">This is the exact setup flow most users need.</p>
+      <div class="two-up">
+        <div class="panel">
+          <h3>1) Add the resource</h3>
+          <pre><code>HACS → Frontend → Custom repositories
+https://github.com/yusufyusufyusufyusuf/clearspace-card
+
+Then download the ClearSpace card resource.</code></pre>
+        </div>
+        <div class="panel">
+          <h3>2) Add it to Lovelace</h3>
+          <pre><code>Settings → Dashboards → Resources → Add resource
+URL: /local/clearspace-card.js
+Type: JavaScript Module</code></pre>
+        </div>
+      </div>
+      <div class="note" style="margin-top:16px;">If you use HACS, just install the resource once. The four card types appear after the browser refreshes.</div>
+    </section>
+
+    <section class="section">
+      <h2>Recommended configs</h2>
+      <div class="two-up">
+        <div class="panel">
+          <h3>Task list card</h3>
+          <pre><code>type: custom:clearspace-card
+entity: sensor.clearspace_tasks
+title: ClearSpace Tasks
+refresh_interval_seconds: 60
+show_completed: true
+max_items: 50
+show_add_button: true</code></pre>
+        </div>
+        <div class="panel">
+          <h3>Board card</h3>
+          <pre><code>type: custom:clearspace-board-card
+entity: sensor.clearspace_tasks
+title: ClearSpace Board
+refresh_interval_seconds: 60
+show_completed: true</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Downloads</h2>
+      <p class="sub">Use the repo or the raw JS resource file.</p>
+      <div class="download-list">
+        <a class="btn primary" href="https://raw.githubusercontent.com/yusufyusufyusufyusuf/clearspace-card/main/clearspace-card.js" target="_blank" rel="noreferrer">Download clearspace-card.js</a>
+        <a class="btn" href="https://github.com/yusufyusufyusufyusuf/clearspace-card/releases" target="_blank" rel="noreferrer">Release downloads</a>
+        <a class="btn" href="https://github.com/yusufyusufyusufyusuf/clearspace-card" target="_blank" rel="noreferrer">GitHub repository</a>
+      </div>
+    </section>
+
+    <div class="footer">
+      ClearSpace Cards • Built for Home Assistant • Use the repository above to install in HACS.
+    </div>
+  </main>
+</body>
+</html>

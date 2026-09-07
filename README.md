@@ -1,41 +1,41 @@
-# ClearSpace Card
+# ClearSpace Cards
 
-A Home Assistant Lovelace card for displaying ClearSpace tasks.
+A set of Home Assistant Lovelace cards for ClearSpace.
 
-## Features
+## Available card types
 
-- Shows tasks from `calendar.clearspace` by default
-- Falls back to tasks exposed in entity attributes if available
-- Auto-refreshes every 60 seconds by default
-- Shows due dates and priority styling
-- Optional Add Task button
+- `custom:clearspace-card` — detailed task list
+- `custom:clearspace-compact-card` — compact summary + top tasks
+- `custom:clearspace-board-card` — grouped board view
+- `custom:clearspace-stats-card` — stats-focused layout
 
-## Installation
+## Install
 
 ### HACS
 
-1. In Home Assistant, go to **HACS → Frontend**
-2. Click the **three dots** (⋮)
-3. Click **Custom repositories**
-4. Add this repository URL:
+1. Open **HACS → Frontend**
+2. Add this repository as a custom repository:
    ```
    https://github.com/yusufyusufyusufyusuf/clearspace-card
    ```
-5. Set category to **Dashboard**
-6. Click **Add**
-7. Find **ClearSpace Tasks** and click **Download**
-8. Refresh your browser
+3. Download the ClearSpace card resource
+4. Add the JavaScript resource to Lovelace
+5. Refresh your browser
 
 ### Manual
 
 1. Download `clearspace-card.js`
-2. Copy it to `config/www/`
+2. Copy it into `config/www/`
 3. Add a Lovelace resource:
    - URL: `/local/clearspace-card.js`
    - Type: `JavaScript Module`
 4. Refresh your browser
 
-## Example
+## Home Assistant config
+
+Use the entity that contains the ClearSpace task list. The cards will auto-detect ClearSpace entities when possible.
+
+### Task list card
 
 ```yaml
 type: custom:clearspace-card
@@ -47,13 +47,51 @@ max_items: 50
 show_add_button: true
 ```
 
-## Options
+### Compact card
 
-| Option | Type | Default | Description |
-|---|---|---:|---|
-| `entity` | string | `calendar.clearspace` | ClearSpace entity to read from |
-| `title` | string | `ClearSpace Tasks` | Card title |
-| `show_completed` | boolean | `true` | Show completed tasks if present |
-| `max_items` | number | `50` | Maximum visible tasks |
-| `refresh_interval_seconds` | number | `60` | Auto-refresh interval |
-| `show_add_button` | boolean | `true` | Show the Add Task button |
+```yaml
+type: custom:clearspace-compact-card
+entity: sensor.clearspace_tasks
+title: ClearSpace Compact
+refresh_interval_seconds: 60
+show_completed: false
+max_items: 3
+```
+
+### Board card
+
+```yaml
+type: custom:clearspace-board-card
+entity: sensor.clearspace_tasks
+title: ClearSpace Board
+refresh_interval_seconds: 60
+show_completed: true
+```
+
+### Stats card
+
+```yaml
+type: custom:clearspace-stats-card
+entity: sensor.clearspace_tasks
+title: ClearSpace Stats
+refresh_interval_seconds: 60
+```
+
+## Backend refresh service
+
+The integration now exposes:
+
+- `clearspace.refresh`
+- `clearspace.create_task`
+- `clearspace.complete_task`
+- `clearspace.delete_task`
+
+You can call `clearspace.refresh` from automations if you want to force a sync.
+
+## Docs
+
+Open the setup and gallery page:
+
+- `docs/index.html`
+
+If you publish this repo with GitHub Pages, that page becomes your public install/config guide.
