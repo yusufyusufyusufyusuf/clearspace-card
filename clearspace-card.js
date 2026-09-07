@@ -1,24 +1,28 @@
-const CLEARSPACE_VERSION = '1.3.1';
+const CLEARSPACE_VERSION = '1.3.2';
 const CLEARSPACE_DOCS_URL = 'https://github.com/yusufyusufyusufyusuf/clearspace-card';
 
 const CARD_VARIANTS = {
   list: {
     tag: 'clearspace-card',
+    aliases: ['clearspace-task-card', 'clearspace-tasks-card'],
     name: 'ClearSpace Tasks',
     description: 'Detailed ClearSpace task list',
   },
   compact: {
     tag: 'clearspace-compact-card',
+    aliases: ['clearspace-summary-card'],
     name: 'ClearSpace Compact',
     description: 'Small summary card with counts and top tasks',
   },
   board: {
     tag: 'clearspace-board-card',
+    aliases: ['clearspace-kanban-card'],
     name: 'ClearSpace Board',
     description: 'Grouped task board with status columns',
   },
   stats: {
     tag: 'clearspace-stats-card',
+    aliases: ['clearspace-counts-card'],
     name: 'ClearSpace Stats',
     description: 'Stats-focused card with quick action buttons',
   },
@@ -435,7 +439,7 @@ class ClearSpaceCardBase extends HTMLElement {
 }
 
 function registerCard(variant) {
-  const { tag, name, description } = CARD_VARIANTS[variant];
+  const { tag, name, description, aliases = [] } = CARD_VARIANTS[variant];
   const klass = class extends ClearSpaceCardBase {
     constructor() {
       super(variant);
@@ -456,15 +460,22 @@ function registerCard(variant) {
     }
   };
 
-  customElements.define(tag, klass);
-  window.customCards = window.customCards || [];
-  window.customCards.push({
-    type: tag,
-    name,
-    description,
-    preview: true,
-    documentationURL: CLEARSPACE_DOCS_URL,
-  });
+  const tags = [tag, ...aliases];
+  for (const currentTag of tags) {
+    if (!customElements.get(currentTag)) {
+      customElements.define(currentTag, klass);
+    }
+    window.customCards = window.customCards || [];
+    if (!window.customCards.some((card) => card.type === currentTag)) {
+      window.customCards.push({
+        type: currentTag,
+        name,
+        description,
+        preview: true,
+        documentationURL: CLEARSPACE_DOCS_URL,
+      });
+    }
+  }
 }
 
 Object.keys(CARD_VARIANTS).forEach(registerCard);
