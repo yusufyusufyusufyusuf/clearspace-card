@@ -18,7 +18,7 @@ A set of Home Assistant Lovelace cards for ClearSpace.
    ```
    https://github.com/yusufyusufyusufyusuf/clearspace-card
    ```
-3. Download the ClearSpace card resource (`clearspace-card.v1.3.5.js`)
+3. Download the ClearSpace card resource (`clearspace-card.v1.3.6.js`)
 4. Add the JavaScript resource to Lovelace
 5. Refresh your browser
 
@@ -34,7 +34,6 @@ A set of Home Assistant Lovelace cards for ClearSpace.
 ## Home Assistant config
 
 Use the entity that contains the ClearSpace task list. The cards will auto-detect ClearSpace entities when possible.
-
 ### Task list card
 
 ```yaml
